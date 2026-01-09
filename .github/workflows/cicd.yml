@@ -1,0 +1,64 @@
+# workflow
+name: Deploy to AWS EC2 with Docker
+
+# Event: main 브랜치에 push시 해당 workflow 실행 (Trigger)
+on:
+  push:
+    branches: ["main"]
+
+# Jobs: 작업 목록
+jobs:
+
+  # Job 1: 빌드 Stage (Dockerfile --build--> Docker Image --> Docker Hub에 업로드)
+  build:
+    # Githb가 제공하는 최신 우분투 서버 환경에서 특정 step 진행하겠다
+    runs-on: ubuntu-latest 
+    steps:
+      # step1) 현재 레파지토리의 소스코드 내려받기 
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          ref: main 
+      # step2) Docker Hub 로그인 
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with: 
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      # step3) Docker Image 빌드 및 Docker Hub에 업로드(발행)
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          build-args: BASE_URL=http://${{ secrets.EC2_HOST }}
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/${{ vars.APP_NAME }}
+          
+  # Job 2: 배포 Stage (EC2에 SSH로 접속 => Docker Hub에 올라간 이미지 내려받고 => 컨테이너 실행)
+  deploy:
+    # build 단계의 작업이 끝나야 시작 
+    needs: build
+    runs-on: ubuntu-latest 
+    steps:
+      # step1) AWS EC2에 접속(ssh) 후 이미지 내려받고 컨테이너 실행 
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }} 
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # 0. 실행 중인 컨테이너가 있다면 중지 및 삭제 (재배포를 위해)
+            docker stop ${{ vars.APP_NAME }} || true
+            docker rm ${{ vars.APP_NAME }} || true
+            # 1. 이미지 내려받기 
+            docker pull ${{ secrets.DOCKER_USERNAME }}/${{ vars.APP_NAME }}
+            # 2. 컨테이너 구동 
+            docker run -d \
+            --name ${{ vars.APP_NAME }} \
+            -p 80:3000 \
+            ${{ secrets.DOCKER_USERNAME }}/${{ vars.APP_NAME }}
+            # 3. 불필요한 이미지 삭제 (용량 관리)
+            docker image prune -f      
+    
