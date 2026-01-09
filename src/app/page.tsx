@@ -12,7 +12,7 @@ export default async function Home() {
       <main className="max-w-6xl mx-auto px-4 py-16">
         <div className="text-center mb-16">
           <h1 className="text-5xl font-bold text-gray-900 mb-4">
-            개발자를 위한 기술 블로그
+            개발자를 위한 보람's 기술 블로그
           </h1>
           <p className="text-xl text-gray-600">
             최신 웹 개발 트렌드와 기술을 공유합니다
